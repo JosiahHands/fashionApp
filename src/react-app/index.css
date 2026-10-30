@@ -1,11 +1,26 @@
 :root {
-	font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+	font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+		sans-serif;
 	line-height: 1.5;
 	font-weight: 400;
 
 	color-scheme: light dark;
-	color: rgba(255, 255, 255, 0.87);
-	background-color: #242424;
+
+	--color-bg: #faf8f5;
+	--color-surface: #ffffff;
+	--color-border: #e6e1da;
+	--color-text: #1f1b16;
+	--color-text-muted: #6f675d;
+	--color-accent: #b4475a;
+	--color-accent-text: #ffffff;
+	--color-error: #b42318;
+	--color-error-bg: #fdecea;
+
+	--radius: 12px;
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 24px rgb(0 0 0 / 0.06);
+	--content-width: 1080px;
+	/* Height of the sticky header, so jumping to a section doesn't hide its title. */
+	--header-height: 64px;
 
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
@@ -13,56 +28,302 @@
 	-moz-osx-font-smoothing: grayscale;
 }
 
-a {
-	font-weight: 500;
-	color: #646cff;
-	text-decoration: inherit;
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-bg: #141210;
+		--color-surface: #1e1b18;
+		--color-border: #332e29;
+		--color-text: #efeae4;
+		--color-text-muted: #a39a8f;
+		--color-accent: #e07a8c;
+		--color-accent-text: #1f1b16;
+		--color-error: #ff8a80;
+		--color-error-bg: #3a1d1b;
+		--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+	}
 }
-a:hover {
-	color: #535bf2;
+
+/* The header wraps onto two rows on phones. */
+@media (width <= 560px) {
+	:root {
+		--header-height: 100px;
+	}
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scroll-behavior: smooth;
 }
 
 body {
 	margin: 0;
-	display: flex;
-	place-items: center;
 	min-width: 320px;
+	background-color: var(--color-bg);
+	color: var(--color-text);
+}
+
+/* Footer stays at the bottom even when the page is short. */
+#root {
+	display: flex;
+	flex-direction: column;
 	min-height: 100vh;
 }
 
-h1 {
-	font-size: 3.2em;
-	line-height: 1.1;
+a {
+	color: inherit;
+	text-decoration: none;
 }
 
-button {
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+/* Shared pieces used by the Items, Outfits and Occasions sections. */
+
+.form {
+	display: grid;
+	gap: 16px;
+	justify-items: start;
+}
+
+.field {
+	display: grid;
+	gap: 4px;
+	width: 100%;
+	max-width: 420px;
+}
+
+.label {
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+input[type="text"],
+input[type="search"],
+input[type="password"],
+select {
+	width: 100%;
+	min-width: 0;
+	padding: 8px 12px;
+	background-color: var(--color-bg);
+	border: 1px solid var(--color-border);
 	border-radius: 8px;
-	border: 1px solid transparent;
-	padding: 0.6em 1.2em;
-	font-size: 1em;
-	font-weight: 500;
-	font-family: inherit;
-	background-color: #1a1a1a;
-	cursor: pointer;
-	transition: border-color 0.25s;
-}
-button:hover {
-	border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-	outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-	:root {
-		color: #213547;
-		background-color: #ffffff;
-	}
-	a:hover {
-		color: #747bff;
-	}
-	button {
-		background-color: #f9f9f9;
-	}
+input[type="text"]:focus-visible,
+input[type="search"]:focus-visible,
+input[type="password"]:focus-visible,
+select:focus-visible,
+button:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+button[type="submit"] {
+	padding: 8px 20px;
+	background-color: var(--color-accent);
+	border: none;
+	border-radius: 999px;
+	font-weight: 600;
+	color: var(--color-accent-text);
+	cursor: pointer;
+}
+
+button[type="submit"]:hover {
+	filter: brightness(0.95);
+}
+
+button[type="submit"]:disabled {
+	opacity: 0.5;
+	filter: none;
+	cursor: not-allowed;
+}
+
+.subheading {
+	margin: 12px 0 0;
+	padding-top: 20px;
+	border-top: 1px solid var(--color-border);
+	font-size: 1.1rem;
+}
+
+.hint {
+	margin: 8px 0 0;
+	font-size: 0.85rem;
+	color: var(--color-text-muted);
+}
+
+/* A form's error message, e.g. "That username is taken". */
+.form-error {
+	margin: 0;
+	font-size: 0.9rem;
+	color: var(--color-error);
+	overflow-wrap: anywhere;
+}
+
+/* Checkbox pills: pick items for an outfit, outfits for an occasion, etc. */
+.pills {
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.pills legend {
+	margin-bottom: 8px;
+	padding: 0;
+}
+
+.pill-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.pill {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 14px;
+	border: 1px solid var(--color-border);
+	border-radius: 999px;
+	font-size: 0.9rem;
+	cursor: pointer;
+	user-select: none;
+}
+
+/* The real checkbox is hidden; the whole pill shows its state instead. */
+.pill input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.pill:hover {
+	border-color: var(--color-text-muted);
+}
+
+.pill:has(input:checked) {
+	background-color: var(--color-accent);
+	border-color: var(--color-accent);
+	color: var(--color-accent-text);
+}
+
+.pill:has(input:focus-visible) {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+/* Goes with everything picked so far. */
+.pill.suggested {
+	border-style: dashed;
+	border-color: var(--color-accent);
+}
+
+/* Saved items, outfits and occasions. */
+.cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 12px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.card {
+	position: relative;
+	padding: 14px 44px 14px 16px;
+	background-color: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+}
+
+.card h3 {
+	margin: 0;
+	font-size: 1rem;
+	overflow-wrap: anywhere;
+}
+
+/* Stretches the title link over the whole card, so clicking anywhere opens its page. */
+.card-link::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: var(--radius);
+}
+
+.card-link:focus-visible {
+	outline: none;
+}
+
+.card:has(.card-link:hover) {
+	border-color: var(--color-accent);
+}
+
+.card:has(.card-link:focus-visible) {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+.card-meta {
+	margin: 2px 0 0;
+	font-size: 0.85rem;
+	color: var(--color-text-muted);
+}
+
+.tags-label {
+	margin: 10px 0 0;
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--color-text-muted);
+}
+
+.tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tag {
+	padding: 2px 10px;
+	background-color: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: 999px;
+	font-size: 0.8rem;
+}
+
+/* Sits above the card link so it still gets its own clicks. */
+.remove {
+	position: absolute;
+	z-index: 1;
+	top: 8px;
+	right: 8px;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	font-size: 1.2rem;
+	line-height: 1;
+	color: var(--color-text-muted);
+	cursor: pointer;
+}
+
+.remove:hover {
+	background-color: var(--color-surface);
+	color: var(--color-text);
 }

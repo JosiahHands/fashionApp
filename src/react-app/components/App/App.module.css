@@ -1,0 +1,36 @@
+.main {
+	flex: 1;
+	width: 100%;
+	max-width: var(--content-width);
+	margin: 0 auto;
+	padding: 0 16px 48px;
+}
+
+/* Banner for a request that failed. */
+.error {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	margin-top: 16px;
+	padding: 10px 12px 10px 16px;
+	background-color: var(--color-error-bg);
+	border: 1px solid var(--color-error);
+	border-radius: var(--radius);
+	color: var(--color-error);
+	overflow-wrap: anywhere;
+}
+
+.dismiss {
+	flex-shrink: 0;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	font-size: 1.2rem;
+	line-height: 1;
+	color: inherit;
+	cursor: pointer;
+}

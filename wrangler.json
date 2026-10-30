@@ -14,9 +14,22 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	/**
+	 * The D1 (SQLite) database, available in the Worker as env.DB. Tables are made by the files in migrations/.
+	 * No database_id yet: local dev makes its own database, and `wrangler deploy` creates the real one
+	 * and writes its id here. https://developers.cloudflare.com/d1/
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "fashionapp-db"
+		}
+	],
 	"assets": {
 		"directory": "./dist/client",
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
+		// API requests always reach the Worker instead of getting the app's index.html.
+		"run_worker_first": ["/api/*"]
 	}
 	/**
 	 * Smart Placement

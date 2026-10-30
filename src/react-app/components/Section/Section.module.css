@@ -1,0 +1,25 @@
+.section {
+	margin-bottom: 24px;
+	padding: 24px;
+	background-color: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	/* Keeps the title below the sticky header after a nav link jump. */
+	scroll-margin-top: calc(var(--header-height) + 16px);
+}
+
+.title {
+	margin: 0 0 4px;
+	font-size: 1.4rem;
+}
+
+.description {
+	margin: 0 0 20px;
+	color: var(--color-text-muted);
+}
+
+.content {
+	display: grid;
+	gap: 20px;
+}
