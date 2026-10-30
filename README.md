@@ -93,6 +93,9 @@ Deleting an item also removes it from its outfits, and outfits left with no item
 - Sessions use an `httpOnly`, `SameSite=Lax` cookie. Only a SHA-256 hash of the session token is stored.
 - Each username gets 5 login attempts per 15 minutes. After that, logins return 429 until the time is up, and a successful login resets the count.
 - Every query is scoped to the logged-in user, so other users' items, outfits and occasions return 404.
+- HTTPS only. API requests over plain HTTP get a 308 redirect to HTTPS (`src/worker/index.ts`). Every response, including the app's pages and files (`public/_headers`), sends `Strict-Transport-Security` so browsers stick to HTTPS. `localhost` isn't redirected, so `npm run dev` still works.
+  - On `*.workers.dev` browsers already refuse plain HTTP, because the whole `.dev` domain is HTTPS-only.
+  - On a custom domain, also turn on **SSL/TLS → Edge Certificates → Always Use HTTPS** in the Cloudflare dashboard (free on every plan). That redirects the first visit to a page too. Pages are served before the Worker runs, so the Worker only redirects `/api` requests.
 
 ## Project structure
 ```

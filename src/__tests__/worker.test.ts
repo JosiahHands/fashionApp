@@ -609,6 +609,46 @@ describe("deleting cleans up after itself", () => {
 	});
 });
 
+describe("HTTPS", () => {
+	const send = (url: string, init: RequestInit = {}) => app.request(url, { redirect: "manual", ...init }, env);
+
+	it("redirects plain HTTP to HTTPS, keeping the path and query", async () => {
+		const response = await send("http://fashionapp.example.workers.dev/api/items?x=1");
+		expect(response.status).toBe(308);
+		expect(response.headers.get("Location")).toBe("https://fashionapp.example.workers.dev/api/items?x=1");
+	});
+
+	it("uses 308 so a POST stays a POST, and doesn't run the route over HTTP", async () => {
+		const response = await send("http://fashionapp.example.workers.dev/api/users/signup", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ username: "alice", password: "password123" }),
+		});
+		expect(response.status).toBe(308);
+		expect(sqlite.prepare("SELECT COUNT(*) AS count FROM users").get()).toEqual({ count: 0 });
+	});
+
+	it("tells browsers to stay on HTTPS (HSTS), including on errors", async () => {
+		for (const path of ["/api/users/me", "/api/nope"]) {
+			const response = await send(`https://fashionapp.example.workers.dev${path}`);
+			expect(response.status).not.toBe(308);
+			expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
+		}
+	});
+
+	it.each(["http://localhost:5173", "http://127.0.0.1:5173", "http://[::1]:5173"])(
+		"doesn't redirect local development at %s",
+		async (origin) => {
+			expect((await send(`${origin}/api/users/me`)).status).toBe(401);
+		},
+	);
+
+	it("the app's pages and files get the HSTS header too (public/_headers)", () => {
+		const headers = readFileSync(join(__dirname, "../../public/_headers"), "utf8");
+		expect(headers).toMatch(/^\/\*\n\s+Strict-Transport-Security: max-age=31536000\n/);
+	});
+});
+
 describe("anything else", () => {
 	it("unknown routes get a JSON 404", async () => {
 		const { status, data } = await call("GET", "/api/nope");
