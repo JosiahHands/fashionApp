@@ -10,7 +10,7 @@ This is a web application for saving and organizing fashion outfits.
 4. Organize outfits by categories or occasions
 5. Search your items by name to see what each one goes with
 6. Open any item, outfit or occasion to see everything linked to it on its own page
-7. Edit an outfit's or occasion's name and contents, and put your items, outfits and occasions in your own order
+7. Edit an outfit's or occasion's name and contents, and drag your items, outfits and occasions into your own order (by the ⠿ grip on each card, or focus it and use the arrow keys)
 8. Accounts with a username and password. Everything you save is private to your account
 9. An account page (click your username) to log out or delete your account and everything in it
 

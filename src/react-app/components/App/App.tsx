@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router";
 import type { Item, ItemType, Occasion, Outfit, User } from "../../../shared/types";
 import * as api from "../../api";
@@ -16,6 +16,20 @@ import { Section } from "../Section/Section";
 import styles from "./App.module.css";
 
 const LOGGED_OUT_MESSAGE = "You've been logged out. Log in again.";
+
+// The lists whose cards can be dragged into a new order.
+type ListName = "items" | "outfits" | "occasions";
+
+// What a card's drag handle needs: drag it with a mouse, finger or pen, or focus it and use the arrow keys.
+export type DragHandleProps = {
+	onPointerDown: (event: PointerEvent<HTMLElement>) => void;
+	onPointerMove: (event: PointerEvent<HTMLElement>) => void;
+	onPointerUp: () => void;
+	onPointerCancel: () => void;
+	onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+	// "true" on the handle of the card being dragged, so CSS can show it.
+	"data-dragging": boolean;
+};
 
 function App() {
 	const navigate = useNavigate();
@@ -35,6 +49,8 @@ function App() {
 	const [error, setError] = useState<string | null>(null);
 	// Order saves wait for the one before, so a quick run of moves reaches the server in the right order.
 	const orderSaves = useRef(Promise.resolve());
+	// The card being dragged, and its list's order when the drag started (to tell if anything moved).
+	const [dragging, setDragging] = useState<{ list: ListName; id: string; startOrder: string } | null>(null);
 
 	const isLoggedIn = Boolean(user);
 
@@ -175,8 +191,7 @@ function App() {
 	}
 
 	// Saves a list's new order. If it fails, the error shows and the list goes back to the server's order.
-	function saveOrder(list: "items" | "outfits" | "occasions", things: { id: string }[]) {
-		const ids = things.map((thing) => thing.id);
+	function saveOrder(list: ListName, ids: string[]) {
 		orderSaves.current = orderSaves.current.then(async () => {
 			try {
 				await api.saveOrder(list, ids);
@@ -255,12 +270,6 @@ function App() {
 		}
 	}
 
-	function moveItem(id: string, step: number) {
-		const next = moveInList(items, id, step);
-		setItems(next);
-		saveOrder("items", next);
-	}
-
 	async function addOutfit(name: string, itemIds: string[]): Promise<boolean> {
 		try {
 			const outfit = await api.createOutfit(name, itemIds);
@@ -306,12 +315,6 @@ function App() {
 		}
 	}
 
-	function moveOutfit(id: string, step: number) {
-		const next = moveInList(outfits, id, step);
-		setOutfits(next);
-		saveOrder("outfits", next);
-	}
-
 	async function addOccasion(name: string, outfitIds: string[]): Promise<boolean> {
 		try {
 			const occasion = await api.createOccasion(name, outfitIds);
@@ -343,10 +346,75 @@ function App() {
 		}
 	}
 
-	function moveOccasion(id: string, step: number) {
-		const next = moveInList(occasions, id, step);
-		setOccasions(next);
-		saveOrder("occasions", next);
+	// --- Drag and drop ---
+
+	// Each list by name, for the drag and drop code below.
+	const lists: Record<ListName, { id: string }[]> = { items, outfits, occasions };
+
+	// Moves a card to a new place in its list, on screen only. Saving happens when the drag ends.
+	function moveCard(list: ListName, id: string, toIndex: number) {
+		if (list === "items") {
+			setItems((cards) => moveInList(cards, id, toIndex));
+		} else if (list === "outfits") {
+			setOutfits((cards) => moveInList(cards, id, toIndex));
+		} else {
+			setOccasions((cards) => moveInList(cards, id, toIndex));
+		}
+	}
+
+	// The props for one card's drag handle (the ⠿ button). While you drag, the card swaps places with
+	// whichever card of the same list is under the pointer. Letting go saves the new order.
+	function dragHandle(list: ListName, id: string): DragHandleProps {
+		const ids = lists[list].map((card) => card.id);
+		return {
+			"data-dragging": dragging?.id === id,
+			onPointerDown(event) {
+				// Keeps sending this handle the pointer's moves, even once it's over other cards.
+				event.currentTarget.setPointerCapture(event.pointerId);
+				setDragging({ list, id, startOrder: ids.join() });
+			},
+			onPointerMove(event) {
+				if (dragging?.id !== id) {
+					return;
+				}
+				// Scrolls the page when dragging near the top or bottom of the screen.
+				if (event.clientY < 120) {
+					window.scrollBy(0, -12);
+				} else if (event.clientY > window.innerHeight - 60) {
+					window.scrollBy(0, 12);
+				}
+				// The card under the pointer, if it's in the same list (<ul>) as the one being dragged.
+				const over = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("li[data-id]");
+				if (over && over.dataset.id !== id && over.parentElement === event.currentTarget.closest("ul")) {
+					moveCard(list, id, ids.indexOf(over.dataset.id!));
+				}
+			},
+			onPointerUp: endDrag,
+			// The browser took over the pointer (e.g. the phone's own gesture): keep the order so far.
+			onPointerCancel: endDrag,
+			onKeyDown(event) {
+				const step = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[event.key];
+				const toIndex = ids.indexOf(id) + (step ?? 0);
+				if (step === undefined || toIndex < 0 || toIndex >= ids.length) {
+					return;
+				}
+				event.preventDefault();
+				moveCard(list, id, toIndex);
+				saveOrder(list, moveInList(lists[list], id, toIndex).map((card) => card.id));
+			},
+		};
+	}
+
+	// Saves the new order, if the drag changed it.
+	function endDrag() {
+		if (!dragging) {
+			return;
+		}
+		const ids = lists[dragging.list].map((card) => card.id);
+		if (ids.join() !== dragging.startOrder) {
+			saveOrder(dragging.list, ids);
+		}
+		setDragging(null);
 	}
 
 	const home = (
@@ -373,7 +441,7 @@ function App() {
 					onAdd={addItem}
 					onToggleCompatible={toggleCompatible}
 					onRemove={removeItem}
-					onMove={moveItem}
+					dragHandle={(id) => dragHandle("items", id)}
 				/>
 			</Section>
 			<Section
@@ -388,7 +456,7 @@ function App() {
 						onAdd={addOutfit}
 						onUpdate={updateOutfit}
 						onRemove={removeOutfit}
-						onMove={moveOutfit}
+						dragHandle={(id) => dragHandle("outfits", id)}
 					/>
 				) : (
 					<EmptyState message="Add an item first to start building outfits." />
@@ -406,7 +474,7 @@ function App() {
 						onAdd={addOccasion}
 						onUpdate={updateOccasion}
 						onRemove={removeOccasion}
-						onMove={moveOccasion}
+						dragHandle={(id) => dragHandle("occasions", id)}
 					/>
 				) : (
 					<EmptyState message="Save an outfit first to set up occasions." />
@@ -500,16 +568,15 @@ function setIncluded(ids: string[], id: string, included: boolean) {
 	return ids.filter((other) => other !== id);
 }
 
-// A copy of the list with one thing moved a step earlier (-1) or later (+1).
-// At the start or end of the list it stays where it is.
-function moveInList<T extends { id: string }>(list: T[], id: string, step: number): T[] {
-	const from = list.findIndex((thing) => thing.id === id);
-	const to = from + step;
-	if (from === -1 || to < 0 || to >= list.length) {
+// A copy of the list with one thing taken out and put back in at toIndex.
+// moveInList([a, b, c, d], "a", 2) → [b, c, a, d]
+function moveInList<T extends { id: string }>(list: T[], id: string, toIndex: number): T[] {
+	const moving = list.find((thing) => thing.id === id);
+	if (!moving) {
 		return list;
 	}
-	const next = [...list];
-	[next[from], next[to]] = [next[to], next[from]];
+	const next = list.filter((thing) => thing.id !== id);
+	next.splice(toIndex, 0, moving);
 	return next;
 }
 

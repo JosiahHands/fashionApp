@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { NAME_MAX_LENGTH, type Item, type Outfit } from "../../../shared/types";
+import type { DragHandleProps } from "../App/App";
 import { EmptyState } from "../EmptyState/EmptyState";
 
 type OutfitsProps = {
@@ -10,12 +11,12 @@ type OutfitsProps = {
 	onAdd: (name: string, itemIds: string[]) => Promise<boolean>;
 	onUpdate: (id: string, name: string, itemIds: string[]) => Promise<boolean>;
 	onRemove: (id: string) => void;
-	// Moves an outfit one place earlier (-1) or later (+1) in the list.
-	onMove: (id: string, step: number) => void;
+	// Props for a card's drag handle, from App (which does the dragging).
+	dragHandle: (id: string) => DragHandleProps;
 };
 
 // Build outfits from saved items, see them listed, and edit them.
-export function Outfits({ items, outfits, onAdd, onUpdate, onRemove, onMove }: OutfitsProps) {
+export function Outfits({ items, outfits, onAdd, onUpdate, onRemove, dragHandle }: OutfitsProps) {
 	const [name, setName] = useState("");
 	const [pickedIds, setPickedIds] = useState<string[]>([]);
 	// The outfit loaded into the form for editing, or null when the form adds a new one.
@@ -126,8 +127,8 @@ export function Outfits({ items, outfits, onAdd, onUpdate, onRemove, onMove }: O
 				<EmptyState message="No outfits saved yet." />
 			) : (
 				<ul className="cards">
-					{outfits.map((outfit, index) => (
-						<li key={outfit.id} className="card">
+					{outfits.map((outfit) => (
+						<li key={outfit.id} className="card" data-id={outfit.id}>
 							<h3>
 								<Link className="card-link" to={`/outfits/${outfit.id}`}>
 									{outfit.name}
@@ -149,29 +150,18 @@ export function Outfits({ items, outfits, onAdd, onUpdate, onRemove, onMove }: O
 								>
 									Edit
 								</button>
-								{outfits.length > 1 && (
-									<>
-										<button
-											type="button"
-											className="button"
-											aria-label={`Move ${outfit.name} earlier`}
-											disabled={index === 0}
-											onClick={() => onMove(outfit.id, -1)}
-										>
-											←
-										</button>
-										<button
-											type="button"
-											className="button"
-											aria-label={`Move ${outfit.name} later`}
-											disabled={index === outfits.length - 1}
-											onClick={() => onMove(outfit.id, 1)}
-										>
-											→
-										</button>
-									</>
-								)}
 							</div>
+							{outfits.length > 1 && (
+								<button
+									type="button"
+									className="drag-handle"
+									aria-label={`Reorder ${outfit.name}`}
+									title="Drag to move. Or use the arrow keys."
+									{...dragHandle(outfit.id)}
+								>
+									⠿
+								</button>
+							)}
 							<button
 								type="button"
 								className="remove"

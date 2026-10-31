@@ -408,7 +408,49 @@ button[type="submit"]:disabled {
 	cursor: pointer;
 }
 
+/* The ⠿ grip, next to the remove button, for dragging a card to a new place in its list. */
+.drag-handle {
+	position: absolute;
+	z-index: 1;
+	top: 8px;
+	right: 40px;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	font-size: 1.1rem;
+	line-height: 1;
+	color: var(--color-text-muted);
+	cursor: grab;
+	/* A finger on the grip drags the card instead of scrolling the page. */
+	touch-action: none;
+	user-select: none;
+}
+
+.card:has(.drag-handle) {
+	padding-right: 76px;
+}
+
+/* The card being dragged. */
+.card:has(.drag-handle[data-dragging="true"]) {
+	border-style: dashed;
+	border-color: var(--color-accent);
+	opacity: 0.7;
+}
+
+body:has(.drag-handle[data-dragging="true"]) {
+	cursor: grabbing;
+	user-select: none;
+}
+
 @media (hover: hover) {
+	.drag-handle:hover {
+		background-color: var(--color-surface);
+		color: var(--color-text);
+	}
+
 	.remove:hover {
 		background-color: var(--color-surface);
 		color: var(--color-text);
@@ -428,18 +470,23 @@ button[type="submit"]:disabled {
 		min-height: 44px;
 	}
 
-	.card-actions .button {
-		min-width: 44px;
-	}
-
 	.card {
 		padding-right: 56px;
 	}
 
-	.remove {
+	.card:has(.drag-handle) {
+		padding-right: 100px;
+	}
+
+	.remove,
+	.drag-handle {
 		top: 4px;
 		right: 4px;
 		width: 44px;
 		height: 44px;
+	}
+
+	.drag-handle {
+		right: 48px;
 	}
 }

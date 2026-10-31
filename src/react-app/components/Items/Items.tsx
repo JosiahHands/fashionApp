@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { itemTypes, NAME_MAX_LENGTH, type Item, type ItemType } from "../../../shared/types";
+import type { DragHandleProps } from "../App/App";
 import { EmptyState } from "../EmptyState/EmptyState";
 
 type ItemsProps = {
@@ -9,12 +10,12 @@ type ItemsProps = {
 	onAdd: (name: string, type: ItemType) => Promise<boolean>;
 	onToggleCompatible: (firstId: string, secondId: string) => Promise<void>;
 	onRemove: (id: string) => void;
-	// Moves an item one place earlier (-1) or later (+1) in the list.
-	onMove: (id: string, step: number) => void;
+	// Props for a card's drag handle, from App (which does the dragging).
+	dragHandle: (id: string) => DragHandleProps;
 };
 
 // Add items, see them listed, and mark which ones go together.
-export function Items({ items, onAdd, onToggleCompatible, onRemove, onMove }: ItemsProps) {
+export function Items({ items, onAdd, onToggleCompatible, onRemove, dragHandle }: ItemsProps) {
 	const [name, setName] = useState("");
 	const [type, setType] = useState<ItemType>("Top");
 	const [selectedId, setSelectedId] = useState("");
@@ -83,8 +84,8 @@ export function Items({ items, onAdd, onToggleCompatible, onRemove, onMove }: It
 				<EmptyState message="No items saved yet." />
 			) : (
 				<ul className="cards">
-					{items.map((item, index) => (
-						<li key={item.id} className="card">
+					{items.map((item) => (
+						<li key={item.id} className="card" data-id={item.id}>
 							<h3>
 								<Link className="card-link" to={`/items/${item.id}`}>
 									{item.name}
@@ -104,26 +105,15 @@ export function Items({ items, onAdd, onToggleCompatible, onRemove, onMove }: It
 								</>
 							)}
 							{items.length > 1 && (
-								<div className="card-actions">
-									<button
-										type="button"
-										className="button"
-										aria-label={`Move ${item.name} earlier`}
-										disabled={index === 0}
-										onClick={() => onMove(item.id, -1)}
-									>
-										←
-									</button>
-									<button
-										type="button"
-										className="button"
-										aria-label={`Move ${item.name} later`}
-										disabled={index === items.length - 1}
-										onClick={() => onMove(item.id, 1)}
-									>
-										→
-									</button>
-								</div>
+								<button
+									type="button"
+									className="drag-handle"
+									aria-label={`Reorder ${item.name}`}
+									title="Drag to move. Or use the arrow keys."
+									{...dragHandle(item.id)}
+								>
+									⠿
+								</button>
 							)}
 							<button
 								type="button"

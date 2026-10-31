@@ -4,14 +4,14 @@
 // Tests for src/react-app: api.ts, each component on its own, then the whole App against a fake /api.
 
 import "@testing-library/jest-dom";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { Item, Occasion, Outfit } from "../shared/types";
 import * as api from "../react-app/api";
 import { Account } from "../react-app/components/Account/Account";
-import App from "../react-app/components/App/App";
+import App, { type DragHandleProps } from "../react-app/components/App/App";
 import { Detail } from "../react-app/components/Detail/Detail";
 import { Header } from "../react-app/components/Header/Header";
 import { Items } from "../react-app/components/Items/Items";
@@ -63,10 +63,24 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
+// Stands in for App's dragHandle in component tests. Records which cards asked for a handle.
+function fakeDragHandle() {
+	return jest.fn((): DragHandleProps => ({
+		"data-dragging": false,
+		onPointerDown: jest.fn(),
+		onPointerMove: jest.fn(),
+		onPointerUp: jest.fn(),
+		onPointerCancel: jest.fn(),
+		onKeyDown: jest.fn(),
+	}));
+}
+
 beforeEach(() => {
-	// jsdom doesn't do scrolling; pages scroll to the top or to a section when they open.
+	// jsdom doesn't do scrolling, layout or pointer capture, so those are stand-ins.
 	window.scrollTo = jest.fn();
+	window.scrollBy = jest.fn();
 	Element.prototype.scrollIntoView = jest.fn();
+	Element.prototype.setPointerCapture = jest.fn();
 });
 
 afterEach(() => {
@@ -191,17 +205,17 @@ describe("Items", () => {
 		onToggleCompatible = jest.fn().mockResolvedValue(undefined),
 	) {
 		const onRemove = jest.fn();
-		const onMove = jest.fn();
+		const dragHandle = fakeDragHandle();
 		renderAt(
 			<Items
 				items={items}
 				onAdd={onAdd}
 				onToggleCompatible={onToggleCompatible}
 				onRemove={onRemove}
-				onMove={onMove}
+				dragHandle={dragHandle}
 			/>,
 		);
-		return { user: userEvent.setup(), onAdd, onToggleCompatible, onRemove, onMove };
+		return { user: userEvent.setup(), onAdd, onToggleCompatible, onRemove, dragHandle };
 	}
 
 	it("adds an item with a trimmed name, then resets the name and type", async () => {
@@ -272,30 +286,28 @@ describe("Items", () => {
 		await waitFor(() => expect(loafers).toBeEnabled());
 	});
 
-	it("each card links to the item's page and has remove and move buttons", async () => {
-		const { user, onRemove, onMove } = renderItems([shirt, jeans]);
+	it("each card links to the item's page and has remove and drag buttons", async () => {
+		const { user, onRemove, dragHandle } = renderItems([shirt, jeans]);
 		expect(screen.getByRole("link", { name: "White shirt" })).toHaveAttribute("href", "/items/shirt");
 		await user.click(screen.getByRole("button", { name: "Remove Blue jeans" }));
 		expect(onRemove).toHaveBeenCalledWith("jeans");
 
-		expect(screen.getByRole("button", { name: "Move White shirt earlier" })).toBeDisabled();
-		expect(screen.getByRole("button", { name: "Move Blue jeans later" })).toBeDisabled();
-		await user.click(screen.getByRole("button", { name: "Move White shirt later" }));
-		expect(onMove).toHaveBeenCalledWith("shirt", 1);
-		await user.click(screen.getByRole("button", { name: "Move Blue jeans earlier" }));
-		expect(onMove).toHaveBeenCalledWith("jeans", -1);
+		expect(screen.getByRole("button", { name: "Reorder White shirt" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Reorder Blue jeans" })).toBeInTheDocument();
+		expect(dragHandle).toHaveBeenCalledWith("shirt");
+		expect(dragHandle).toHaveBeenCalledWith("jeans");
 	});
 
-	it("has no move buttons when there's only one item", () => {
+	it("has nothing to drag when there's only one item", () => {
 		renderItems([shoes]);
-		expect(screen.queryByRole("button", { name: /Move/ })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /Reorder/ })).not.toBeInTheDocument();
 	});
 });
 
 describe("Outfits", () => {
 	function renderOutfits(outfits: Outfit[], onAdd = jest.fn().mockResolvedValue(true)) {
 		const onUpdate = jest.fn().mockResolvedValue(true);
-		const onMove = jest.fn();
+		const dragHandle = fakeDragHandle();
 		renderAt(
 			<Outfits
 				items={[shirt, jeans, shoes]}
@@ -303,10 +315,10 @@ describe("Outfits", () => {
 				onAdd={onAdd}
 				onUpdate={onUpdate}
 				onRemove={jest.fn()}
-				onMove={onMove}
+				dragHandle={dragHandle}
 			/>,
 		);
-		return { user: userEvent.setup(), onAdd, onUpdate, onMove };
+		return { user: userEvent.setup(), onAdd, onUpdate, dragHandle };
 	}
 
 	it("can only save once it has a name and at least one item", async () => {
@@ -372,10 +384,10 @@ describe("Outfits", () => {
 		expect(screen.getByRole("button", { name: "Save outfit" })).toBeInTheDocument();
 	});
 
-	it("moves an outfit earlier or later", async () => {
-		const { user, onMove } = renderOutfits([brunch, errands]);
-		await user.click(screen.getByRole("button", { name: "Move Errands earlier" }));
-		expect(onMove).toHaveBeenCalledWith("errands", -1);
+	it("each outfit card has a drag button", () => {
+		const { dragHandle } = renderOutfits([brunch, errands]);
+		expect(screen.getByRole("button", { name: "Reorder Errands" })).toBeInTheDocument();
+		expect(dragHandle).toHaveBeenCalledWith("errands");
 	});
 });
 
@@ -383,7 +395,7 @@ describe("Occasions", () => {
 	function renderOccasions(onAdd = jest.fn().mockResolvedValue(true)) {
 		const onUpdate = jest.fn().mockResolvedValue(true);
 		const onRemove = jest.fn();
-		const onMove = jest.fn();
+		const dragHandle = fakeDragHandle();
 		const party: Occasion = { id: "party", name: "Party", outfitIds: ["errands"] };
 		renderAt(
 			<Occasions
@@ -392,14 +404,14 @@ describe("Occasions", () => {
 				onAdd={onAdd}
 				onUpdate={onUpdate}
 				onRemove={onRemove}
-				onMove={onMove}
+				dragHandle={dragHandle}
 			/>,
 		);
-		return { user: userEvent.setup(), onAdd, onUpdate, onRemove, onMove };
+		return { user: userEvent.setup(), onAdd, onUpdate, onRemove, dragHandle };
 	}
 
-	it("saves an occasion with the picked outfits, and has remove and move buttons", async () => {
-		const { user, onAdd, onRemove, onMove } = renderOccasions();
+	it("saves an occasion with the picked outfits, and has remove and drag buttons", async () => {
+		const { user, onAdd, onRemove, dragHandle } = renderOccasions();
 		await user.type(screen.getByLabelText("Occasion or category"), "Date night");
 		await user.click(screen.getByRole("checkbox", { name: "Brunch" }));
 		await user.click(screen.getByRole("button", { name: "Save occasion" }));
@@ -408,8 +420,8 @@ describe("Occasions", () => {
 
 		await user.click(screen.getByRole("button", { name: "Remove Weekend" }));
 		expect(onRemove).toHaveBeenCalledWith("weekend");
-		await user.click(screen.getByRole("button", { name: "Move Weekend later" }));
-		expect(onMove).toHaveBeenCalledWith("weekend", 1);
+		expect(screen.getByRole("button", { name: "Reorder Weekend" })).toBeInTheDocument();
+		expect(dragHandle).toHaveBeenCalledWith("weekend");
 	});
 
 	it("saves only once when Save occasion is double-clicked", async () => {
@@ -824,16 +836,70 @@ describe("App", () => {
 		expect(calls).toContainEqual({ method: "POST", path: "/items", body: { name: "Rain coat", type: "Outerwear" } });
 	});
 
-	it("moves an item on screen right away and saves the new order", async () => {
-		const { user, calls, state } = fakeServer({ loggedIn: true });
+	// jsdom has no layout, so "what's under the pointer" is faked: the card whose name is given.
+	function pointAt(name: string) {
+		document.elementFromPoint = () => section("items").getByRole("link", { name });
+	}
+
+	it("dragging a card over another moves it there, and letting go saves the new order", async () => {
+		const { calls, state } = fakeServer({ loggedIn: true });
 		renderApp();
 		await screen.findByRole("link", { name: "White shirt" });
-		await user.click(section("items").getByRole("button", { name: "Move Loafers earlier" }));
+		const grip = () => section("items").getByRole("button", { name: "Reorder Loafers" });
+
+		fireEvent.pointerDown(grip(), { pointerId: 1 });
+		expect(grip()).toHaveAttribute("data-dragging", "true");
+		pointAt("Blue jeans");
+		fireEvent.pointerMove(grip(), { pointerId: 1, clientY: 300 });
 		expect(cardNames("items")).toEqual(["White shirt", "Loafers", "Blue jeans"]);
+		pointAt("White shirt");
+		fireEvent.pointerMove(grip(), { pointerId: 1, clientY: 300 });
+		expect(cardNames("items")).toEqual(["Loafers", "White shirt", "Blue jeans"]);
+		// Nothing is saved until the card is let go.
+		expect(calls.some((call) => call.path === "/items/order")).toBe(false);
+
+		fireEvent.pointerUp(grip(), { pointerId: 1 });
+		expect(grip()).toHaveAttribute("data-dragging", "false");
 		await waitFor(() =>
-			expect(calls).toContainEqual({ method: "PUT", path: "/items/order", body: { ids: ["shirt", "shoes", "jeans"] } }),
+			expect(calls).toContainEqual({ method: "PUT", path: "/items/order", body: { ids: ["shoes", "shirt", "jeans"] } }),
 		);
-		expect(state.items.map((item) => item.id)).toEqual(["shirt", "shoes", "jeans"]);
+		expect(state.items.map((item) => item.id)).toEqual(["shoes", "shirt", "jeans"]);
+	});
+
+	it("a drag that ends where it started saves nothing, and cards from other lists are ignored", async () => {
+		const { calls } = fakeServer({ loggedIn: true });
+		renderApp();
+		await screen.findByRole("link", { name: "White shirt" });
+		const grip = section("items").getByRole("button", { name: "Reorder Loafers" });
+		fireEvent.pointerDown(grip, { pointerId: 1 });
+		// Over an outfit card: not in the items list, so nothing moves.
+		document.elementFromPoint = () => section("outfits").getByRole("link", { name: "Brunch" });
+		fireEvent.pointerMove(grip, { pointerId: 1, clientY: 300 });
+		fireEvent.pointerUp(grip, { pointerId: 1 });
+		expect(cardNames("items")).toEqual(["White shirt", "Blue jeans", "Loafers"]);
+		expect(calls.some((call) => call.path === "/items/order")).toBe(false);
+	});
+
+	it("the arrow keys move a card from its drag button, and save straight away", async () => {
+		const { user, calls } = fakeServer({ loggedIn: true });
+		renderApp();
+		await screen.findByRole("link", { name: "White shirt" });
+		section("items").getByRole("button", { name: "Reorder White shirt" }).focus();
+		await user.keyboard("{ArrowRight}");
+		expect(cardNames("items")).toEqual(["Blue jeans", "White shirt", "Loafers"]);
+		await user.keyboard("{ArrowDown}");
+		expect(cardNames("items")).toEqual(["Blue jeans", "Loafers", "White shirt"]);
+		// Already last: nothing happens.
+		await user.keyboard("{ArrowDown}");
+		await user.keyboard("{ArrowUp}");
+		expect(cardNames("items")).toEqual(["Blue jeans", "White shirt", "Loafers"]);
+		await waitFor(() =>
+			expect(calls.filter((call) => call.path === "/items/order").map((call) => call.body)).toEqual([
+				{ ids: ["jeans", "shirt", "shoes"] },
+				{ ids: ["jeans", "shoes", "shirt"] },
+				{ ids: ["jeans", "shirt", "shoes"] },
+			]),
+		);
 	});
 
 	it("if saving the order fails, shows the error and goes back to the server's order", async () => {
@@ -846,7 +912,8 @@ describe("App", () => {
 			"GET /outfits": () => [200, { outfits: [brunch] }],
 			"GET /occasions": () => [200, { occasions: [weekend] }],
 		});
-		await user.click(section("items").getByRole("button", { name: "Move White shirt later" }));
+		section("items").getByRole("button", { name: "Reorder White shirt" }).focus();
+		await user.keyboard("{ArrowRight}");
 		expect(await screen.findByRole("alert")).toHaveTextContent("Not found");
 		await waitFor(() => expect(cardNames("items")).toEqual(["White shirt", "Blue jeans", "Loafers"]));
 		expect(calls[0]).toEqual({ method: "PUT", path: "/items/order", body: { ids: ["jeans", "shirt", "shoes"] } });

@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { NAME_MAX_LENGTH, type Occasion, type Outfit } from "../../../shared/types";
+import type { DragHandleProps } from "../App/App";
 import { EmptyState } from "../EmptyState/EmptyState";
 
 type OccasionsProps = {
@@ -10,12 +11,12 @@ type OccasionsProps = {
 	onAdd: (name: string, outfitIds: string[]) => Promise<boolean>;
 	onUpdate: (id: string, name: string, outfitIds: string[]) => Promise<boolean>;
 	onRemove: (id: string) => void;
-	// Moves an occasion one place earlier (-1) or later (+1) in the list.
-	onMove: (id: string, step: number) => void;
+	// Props for a card's drag handle, from App (which does the dragging).
+	dragHandle: (id: string) => DragHandleProps;
 };
 
 // Group saved outfits into occasions, see them listed, and edit them.
-export function Occasions({ outfits, occasions, onAdd, onUpdate, onRemove, onMove }: OccasionsProps) {
+export function Occasions({ outfits, occasions, onAdd, onUpdate, onRemove, dragHandle }: OccasionsProps) {
 	const [name, setName] = useState("");
 	const [pickedIds, setPickedIds] = useState<string[]>([]);
 	// The occasion loaded into the form for editing, or null when the form adds a new one.
@@ -114,8 +115,8 @@ export function Occasions({ outfits, occasions, onAdd, onUpdate, onRemove, onMov
 				<EmptyState message="No occasions saved yet." />
 			) : (
 				<ul className="cards">
-					{occasions.map((occasion, index) => (
-						<li key={occasion.id} className="card">
+					{occasions.map((occasion) => (
+						<li key={occasion.id} className="card" data-id={occasion.id}>
 							<h3>
 								<Link className="card-link" to={`/occasions/${occasion.id}`}>
 									{occasion.name}
@@ -137,29 +138,18 @@ export function Occasions({ outfits, occasions, onAdd, onUpdate, onRemove, onMov
 								>
 									Edit
 								</button>
-								{occasions.length > 1 && (
-									<>
-										<button
-											type="button"
-											className="button"
-											aria-label={`Move ${occasion.name} earlier`}
-											disabled={index === 0}
-											onClick={() => onMove(occasion.id, -1)}
-										>
-											←
-										</button>
-										<button
-											type="button"
-											className="button"
-											aria-label={`Move ${occasion.name} later`}
-											disabled={index === occasions.length - 1}
-											onClick={() => onMove(occasion.id, 1)}
-										>
-											→
-										</button>
-									</>
-								)}
 							</div>
+							{occasions.length > 1 && (
+								<button
+									type="button"
+									className="drag-handle"
+									aria-label={`Reorder ${occasion.name}`}
+									title="Drag to move. Or use the arrow keys."
+									{...dragHandle(occasion.id)}
+								>
+									⠿
+								</button>
+							)}
 							<button
 								type="button"
 								className="remove"
