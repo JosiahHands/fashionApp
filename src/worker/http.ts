@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { NAME_MAX_LENGTH } from "../shared/types";
 
 export function badRequest(message: string): HTTPException {
 	return new HTTPException(400, { message });
@@ -14,13 +15,13 @@ export async function readJsonObject(c: Context): Promise<Record<string, unknown
 	return body as Record<string, unknown>;
 }
 
-// A name that isn't blank and is at most 100 characters, trimmed. Otherwise throws 400.
+// A name that isn't blank and is at most NAME_MAX_LENGTH (100) characters, trimmed. Otherwise throws 400.
 export function readName(value: unknown, field: string): string {
 	if (typeof value !== "string" || value.trim() === "") {
 		throw badRequest(`${field} is required`);
 	}
-	if (value.trim().length > 100) {
-		throw badRequest(`${field} must be 100 characters or fewer`);
+	if (value.trim().length > NAME_MAX_LENGTH) {
+		throw badRequest(`${field} must be ${NAME_MAX_LENGTH} characters or fewer`);
 	}
 	return value.trim();
 }
@@ -28,8 +29,8 @@ export function readName(value: unknown, field: string): string {
 // D1 allows at most 100 values per query, and checking the ids uses one more for the user id.
 const MAX_IDS = 50;
 
-// A list of 1–50 ids, with duplicates removed. Otherwise throws 400.
-export function readIds(value: unknown, field: string): string[] {
+// A list of 1–max ids (50 unless given), with duplicates removed. Otherwise throws 400.
+export function readIds(value: unknown, field: string, max = MAX_IDS): string[] {
 	if (!Array.isArray(value) || value.length === 0) {
 		throw badRequest(`${field} must be a list with at least one id`);
 	}
@@ -37,8 +38,8 @@ export function readIds(value: unknown, field: string): string[] {
 		throw badRequest(`${field} must only contain ids`);
 	}
 	const ids = [...new Set(value as string[])];
-	if (ids.length > MAX_IDS) {
-		throw badRequest(`${field} can have at most ${MAX_IDS} ids`);
+	if (ids.length > max) {
+		throw badRequest(`${field} can have at most ${max} ids`);
 	}
 	return ids;
 }

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { itemTypes, type Item, type ItemType } from "../../shared/types";
 import { requireUser, type AppEnv } from "../auth";
-import { deleteEmptyGroups, groupIds, type LinkRow } from "../db";
-import { badRequest, readJsonObject, readName } from "../http";
+import { deleteEmptyGroups, groupIds, MAX_ORDER_IDS, saveOrder, type LinkRow } from "../db";
+import { badRequest, readIds, readJsonObject, readName } from "../http";
 
 // Every route only sees the logged-in user's own items; anyone else's are 404.
 export const items = new Hono<AppEnv>();
@@ -22,12 +22,13 @@ function readType(value: unknown): ItemType {
 	return value as ItemType;
 }
 
-// The user's items, oldest first, each with the ids of the items it goes with.
+// The user's items in the order they put them in (oldest first until they move one),
+// each with the ids of the items it goes with.
 // Pass an id to load just that one item.
 async function loadItems(db: D1Database, userId: string, id: string | null = null): Promise<Item[]> {
 	const [itemRows, linkRows] = await db.batch([
 		db
-			.prepare("SELECT id, name, type FROM items WHERE user_id = ?1 AND (?2 IS NULL OR id = ?2) ORDER BY rowid")
+			.prepare("SELECT id, name, type FROM items WHERE user_id = ?1 AND (?2 IS NULL OR id = ?2) ORDER BY position, rowid")
 			.bind(userId, id),
 		db
 			.prepare(
@@ -50,13 +51,15 @@ items.get("/", async (c) => {
 	return c.json({ items: await loadItems(c.env.DB, c.var.user.id) });
 });
 
-// POST /api/items  { name, type } → 201 { item } | 400
+// POST /api/items  { name, type } → 201 { item } | 400. New items go at the end of the list.
 items.post("/", async (c) => {
 	const body = await readJsonObject(c);
 	const name = readName(body.name, "name");
 	const type = readType(body.type);
 	const row = await c.env.DB.prepare(
-		"INSERT INTO items (id, user_id, name, type) VALUES (?, ?, ?, ?) RETURNING id, name, type",
+		`INSERT INTO items (id, user_id, name, type, position)
+		VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(position), -1) + 1 FROM items WHERE user_id = ?2))
+		RETURNING id, name, type`,
 	)
 		.bind(crypto.randomUUID(), c.var.user.id, name, type)
 		.first<ItemRow>();
@@ -65,6 +68,14 @@ items.post("/", async (c) => {
 	}
 	const item: Item = { ...row, compatibleIds: [] };
 	return c.json({ item }, 201);
+});
+
+// PUT /api/items/order  { ids } → 200 | 400. Saves the order the user put their items in.
+// Registered before /:id routes so "order" isn't read as an id.
+items.put("/order", async (c) => {
+	const body = await readJsonObject(c);
+	await saveOrder(c.env.DB, "items", c.var.user.id, readIds(body.ids, "ids", MAX_ORDER_IDS));
+	return c.json({ ok: true });
 });
 
 // GET /api/items/:id → 200 { item } | 404

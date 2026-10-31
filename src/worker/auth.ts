@@ -85,18 +85,24 @@ export async function endSession(c: Context<AppEnv>) {
 	deleteCookie(c, SESSION_COOKIE, { path: "/" });
 }
 
+// The user logged in with this request's session cookie, or null if there's no valid, unexpired session.
+export async function findSessionUser(c: Context<AppEnv>): Promise<SessionUser | null> {
+	const token = getCookie(c, SESSION_COOKIE);
+	if (!token) {
+		return null;
+	}
+	return c.env.DB.prepare(
+		`SELECT users.id, users.username
+		FROM sessions JOIN users ON users.id = sessions.user_id
+		WHERE sessions.id = ? AND sessions.expires_at > unixepoch()`,
+	)
+		.bind(await sha256(token))
+		.first<SessionUser>();
+}
+
 // Rejects with 401 unless the request has a valid, unexpired session; sets c.var.user.
 export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
-	const token = getCookie(c, SESSION_COOKIE);
-	const user = token
-		? await c.env.DB.prepare(
-				`SELECT users.id, users.username
-				FROM sessions JOIN users ON users.id = sessions.user_id
-				WHERE sessions.id = ? AND sessions.expires_at > unixepoch()`,
-			)
-				.bind(await sha256(token))
-				.first<SessionUser>()
-		: null;
+	const user = await findSessionUser(c);
 	if (!user) {
 		return c.json({ error: "Not logged in" }, 401);
 	}

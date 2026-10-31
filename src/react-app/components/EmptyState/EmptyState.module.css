@@ -5,4 +5,5 @@
 	border-radius: var(--radius);
 	text-align: center;
 	color: var(--color-text-muted);
+	overflow-wrap: anywhere;
 }

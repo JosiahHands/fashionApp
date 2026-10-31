@@ -1,38 +1,55 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import { itemTypes, type Item, type ItemType } from "../../../shared/types";
+import { itemTypes, NAME_MAX_LENGTH, type Item, type ItemType } from "../../../shared/types";
 import { EmptyState } from "../EmptyState/EmptyState";
 
 type ItemsProps = {
 	items: Item[];
 	// Resolves to true once saved, or false if it failed (App shows the error).
 	onAdd: (name: string, type: ItemType) => Promise<boolean>;
-	onToggleCompatible: (firstId: string, secondId: string) => void;
+	onToggleCompatible: (firstId: string, secondId: string) => Promise<void>;
 	onRemove: (id: string) => void;
+	// Moves an item one place earlier (-1) or later (+1) in the list.
+	onMove: (id: string, step: number) => void;
 };
 
 // Add items, see them listed, and mark which ones go together.
-export function Items({ items, onAdd, onToggleCompatible, onRemove }: ItemsProps) {
+export function Items({ items, onAdd, onToggleCompatible, onRemove, onMove }: ItemsProps) {
 	const [name, setName] = useState("");
 	const [type, setType] = useState<ItemType>("Top");
 	const [selectedId, setSelectedId] = useState("");
+	// True while saving, so a double click can't add the item twice.
+	const [saving, setSaving] = useState(false);
+	// The item whose "goes with" pill is being saved. Its pill is disabled until the server answers.
+	const [pendingId, setPendingId] = useState<string | null>(null);
 
 	// The item being matched up. Falls back to the first item if none is picked or it was removed.
 	const selected = items.find((item) => item.id === selectedId) ?? items[0];
+	const canSave = name.trim() !== "" && !saving;
 
 	function nameOf(id: string) {
 		return items.find((item) => item.id === id)?.name;
 	}
 
-	// Only clears the name once it's saved, so nothing typed is lost if saving fails.
+	// Only clears the form once it's saved, so nothing typed is lost if saving fails.
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		if (name.trim() === "") {
+		if (!canSave) {
 			return;
 		}
-		if (await onAdd(name.trim(), type)) {
+		setSaving(true);
+		const added = await onAdd(name.trim(), type);
+		setSaving(false);
+		if (added) {
 			setName("");
+			setType("Top");
 		}
+	}
+
+	async function toggleCompatible(otherId: string) {
+		setPendingId(otherId);
+		await onToggleCompatible(selected.id, otherId);
+		setPendingId(null);
 	}
 
 	return (
@@ -45,6 +62,7 @@ export function Items({ items, onAdd, onToggleCompatible, onRemove }: ItemsProps
 						value={name}
 						placeholder="e.g. White linen shirt"
 						required
+						maxLength={NAME_MAX_LENGTH}
 						onChange={(event) => setName(event.target.value)}
 					/>
 				</label>
@@ -56,14 +74,16 @@ export function Items({ items, onAdd, onToggleCompatible, onRemove }: ItemsProps
 						))}
 					</select>
 				</label>
-				<button type="submit">Add item</button>
+				<button type="submit" disabled={!canSave}>
+					{saving ? "Adding…" : "Add item"}
+				</button>
 			</form>
 
 			{items.length === 0 ? (
 				<EmptyState message="No items saved yet." />
 			) : (
 				<ul className="cards">
-					{items.map((item) => (
+					{items.map((item, index) => (
 						<li key={item.id} className="card">
 							<h3>
 								<Link className="card-link" to={`/items/${item.id}`}>
@@ -82,6 +102,28 @@ export function Items({ items, onAdd, onToggleCompatible, onRemove }: ItemsProps
 										))}
 									</ul>
 								</>
+							)}
+							{items.length > 1 && (
+								<div className="card-actions">
+									<button
+										type="button"
+										className="button"
+										aria-label={`Move ${item.name} earlier`}
+										disabled={index === 0}
+										onClick={() => onMove(item.id, -1)}
+									>
+										←
+									</button>
+									<button
+										type="button"
+										className="button"
+										aria-label={`Move ${item.name} later`}
+										disabled={index === items.length - 1}
+										onClick={() => onMove(item.id, 1)}
+									>
+										→
+									</button>
+								</div>
 							)}
 							<button
 								type="button"
@@ -119,7 +161,8 @@ export function Items({ items, onAdd, onToggleCompatible, onRemove }: ItemsProps
 										<input
 											type="checkbox"
 											checked={selected.compatibleIds.includes(item.id)}
-											onChange={() => onToggleCompatible(selected.id, item.id)}
+											disabled={pendingId === item.id}
+											onChange={() => toggleCompatible(item.id)}
 										/>
 										{item.name}
 									</label>

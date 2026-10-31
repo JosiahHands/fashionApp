@@ -49,11 +49,10 @@ export function Detail({ kind, items, outfits, occasions }: DetailProps) {
 			</Link>
 
 			{page === null ? (
-				// Saved things only live in memory for now, so a refresh lands here.
-				<EmptyState message={`This ${kind} doesn't exist. It may have been deleted, or the page was refreshed.`} />
+				<EmptyState message={`This ${kind} doesn't exist. It may have been deleted.`} />
 			) : (
 				<>
-					<header className={styles.header}>
+					<header>
 						<p className={styles.label}>{page.label}</p>
 						<h1 className={styles.title}>{page.title}</h1>
 						<p className={styles.meta}>{page.meta}</p>

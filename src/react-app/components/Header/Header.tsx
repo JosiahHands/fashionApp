@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import type { User } from "../../../shared/types";
 import { Login } from "../Login/Login";
 import styles from "./Header.module.css";
@@ -10,16 +10,15 @@ type HeaderProps = {
 	onLogOut: () => void;
 };
 
-// Each link jumps to the section on the home page with the matching id.
+// Each link goes to the section on the home page with the matching id, from any page.
 const links = [
-	{ label: "Items", href: "#items" },
-	{ label: "Outfits", href: "#outfits" },
-	{ label: "Occasions", href: "#occasions" },
+	{ label: "Search", to: "/#search" },
+	{ label: "Items", to: "/#items" },
+	{ label: "Outfits", to: "/#outfits" },
+	{ label: "Occasions", to: "/#occasions" },
 ];
 
 export function Header({ user, onLogIn, onLogOut }: HeaderProps) {
-	const { pathname } = useLocation();
-
 	return (
 		<header className={styles.header}>
 			<div className={styles.inner}>
@@ -27,15 +26,14 @@ export function Header({ user, onLogIn, onLogOut }: HeaderProps) {
 					<span className={styles.logo}>F</span>
 					<span className={styles.title}>FashionApp</span>
 				</Link>
-				{/* The section links only work on the home page; other pages have a Home button. */}
-				{user && pathname === "/" && (
+				{user && (
 					<nav className={styles.nav} aria-label="Main">
 						<ul className={styles.links}>
 							{links.map((link) => (
-								<li key={link.href}>
-									<a className={styles.link} href={link.href}>
+								<li key={link.to}>
+									<Link className={styles.link} to={link.to}>
 										{link.label}
-									</a>
+									</Link>
 								</li>
 							))}
 						</ul>
@@ -44,7 +42,9 @@ export function Header({ user, onLogIn, onLogOut }: HeaderProps) {
 				{user === null && <Login onLogIn={onLogIn} />}
 				{user && (
 					<div className={styles.account}>
-						<span className={styles.username}>@{user.username}</span>
+						<Link className={styles.username} to="/account" title="Your account">
+							@{user.username}
+						</Link>
 						<button type="button" className={styles.logOut} onClick={onLogOut}>
 							Log out
 						</button>

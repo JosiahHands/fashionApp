@@ -100,7 +100,7 @@ function createDatabase() {
 type ApiBody = {
 	error?: string;
 	ok?: boolean;
-	user?: User;
+	user?: User | null;
 	item?: Item;
 	items?: Item[];
 	outfit?: Outfit;
@@ -124,9 +124,18 @@ afterEach(() => {
 	jest.restoreAllMocks();
 });
 
-// Sends one request to the app. Pass a cookie to be logged in.
-async function call(method: string, path: string, options: { body?: unknown; cookie?: string; rawBody?: string } = {}) {
-	const headers: Record<string, string> = {};
+type CallOptions = {
+	body?: unknown;
+	cookie?: string;
+	rawBody?: string;
+	// Where the browser says the request came from. The app's own pages send "same-origin".
+	site?: string;
+	contentType?: string;
+};
+
+// Sends one request to the app, like the app's pages do. Pass a cookie to be logged in.
+async function call(method: string, path: string, options: CallOptions = {}) {
+	const headers: Record<string, string> = { "Sec-Fetch-Site": options.site ?? "same-origin" };
 	if (options.cookie) {
 		headers.Cookie = options.cookie;
 	}
@@ -136,7 +145,7 @@ async function call(method: string, path: string, options: { body?: unknown; coo
 		headers["Content-Type"] = "application/json";
 	} else if (options.body !== undefined) {
 		body = JSON.stringify(options.body);
-		headers["Content-Type"] = "application/json";
+		headers["Content-Type"] = options.contentType ?? "application/json";
 	}
 	const response = await app.request(`http://localhost${path}`, { method, headers, body }, env);
 	const data = (await response.json()) as ApiBody;
@@ -349,11 +358,13 @@ describe("password guessing limit", () => {
 });
 
 describe("sessions", () => {
-	it("/me returns the user for a valid cookie and 401 without one", async () => {
+	// Logged out is a normal answer (200 with user: null), so browsers don't log an error for it.
+	it("/me returns the user for a valid cookie, and null without one", async () => {
 		const cookie = await signUp("alice");
 		expect((await call("GET", "/api/users/me", { cookie })).data.user).toEqual({ username: "alice" });
-		expect((await call("GET", "/api/users/me")).status).toBe(401);
-		expect((await call("GET", "/api/users/me", { cookie: "session=made-up" })).status).toBe(401);
+		expect(await call("GET", "/api/users/me")).toMatchObject({ status: 200, data: { user: null } });
+		expect((await call("GET", "/api/users/me", { cookie: "session=made-up" })).data.user).toBeNull();
+		expect((await call("GET", "/api/items", { cookie: "session=made-up" })).status).toBe(401);
 	});
 
 	it("log out ends the session on the server, so the old cookie stops working", async () => {
@@ -361,13 +372,15 @@ describe("sessions", () => {
 		const { status, setCookie } = await call("POST", "/api/users/logout", { cookie });
 		expect(status).toBe(200);
 		expect(setCookie).toMatch(/Max-Age=0/);
-		expect((await call("GET", "/api/users/me", { cookie })).status).toBe(401);
+		expect((await call("GET", "/api/users/me", { cookie })).data.user).toBeNull();
+		expect((await call("GET", "/api/items", { cookie })).status).toBe(401);
 	});
 
 	it("an expired session is rejected", async () => {
 		const cookie = await signUp("alice");
 		sqlite.exec("UPDATE sessions SET expires_at = unixepoch() - 1");
-		expect((await call("GET", "/api/users/me", { cookie })).status).toBe(401);
+		expect((await call("GET", "/api/users/me", { cookie })).data.user).toBeNull();
+		expect((await call("GET", "/api/items", { cookie })).status).toBe(401);
 	});
 
 	it("stores only a hash of the session token", async () => {
@@ -609,6 +622,212 @@ describe("deleting cleans up after itself", () => {
 	});
 });
 
+// --- Editing and ordering ---
+
+describe("editing outfits and occasions", () => {
+	it("renames an outfit and replaces its items, in the new order", async () => {
+		const cookie = await signUp();
+		const shirt = await addItem(cookie, "White shirt");
+		const jeans = await addItem(cookie, "Blue jeans", "Bottom");
+		const shoes = await addItem(cookie, "Loafers", "Shoes");
+		const brunch = await addOutfit(cookie, "Brunch", [shirt.id, jeans.id]);
+
+		const { status, data } = await call("PUT", `/api/outfits/${brunch.id}`, {
+			cookie,
+			body: { name: "  Late brunch ", itemIds: [shoes.id, shirt.id] },
+		});
+		const edited = { id: brunch.id, name: "Late brunch", itemIds: [shoes.id, shirt.id] };
+		expect(status).toBe(200);
+		expect(data.outfit).toEqual(edited);
+		expect((await call("GET", "/api/outfits", { cookie })).data.outfits).toEqual([edited]);
+	});
+
+	it("checks an edited outfit like a new one, and changes nothing if it's rejected", async () => {
+		const cookie = await signUp();
+		const shirt = await addItem(cookie, "White shirt");
+		const brunch = await addOutfit(cookie, "Brunch", [shirt.id]);
+		for (const body of [
+			{ name: "", itemIds: [shirt.id] },
+			{ name: "x".repeat(101), itemIds: [shirt.id] },
+			{ name: "Brunch", itemIds: [] },
+			{ name: "Brunch", itemIds: ["nope"] },
+		]) {
+			expect((await call("PUT", `/api/outfits/${brunch.id}`, { cookie, body })).status).toBe(400);
+		}
+		expect((await call("GET", "/api/outfits", { cookie })).data.outfits).toEqual([brunch]);
+	});
+
+	it("renames an occasion and replaces its outfits", async () => {
+		const cookie = await signUp();
+		const shirt = await addItem(cookie, "White shirt");
+		const brunch = await addOutfit(cookie, "Brunch", [shirt.id]);
+		const errands = await addOutfit(cookie, "Errands", [shirt.id]);
+		const weekend = await addOccasion(cookie, "Weekend", [brunch.id]);
+
+		const { data } = await call("PUT", `/api/occasions/${weekend.id}`, {
+			cookie,
+			body: { name: "Saturday", outfitIds: [errands.id, brunch.id] },
+		});
+		const edited = { id: weekend.id, name: "Saturday", outfitIds: [errands.id, brunch.id] };
+		expect(data.occasion).toEqual(edited);
+		expect((await call("GET", "/api/occasions", { cookie })).data.occasions).toEqual([edited]);
+		const rejected = await call("PUT", `/api/occasions/${weekend.id}`, { cookie, body: { name: "Odd", outfitIds: ["nope"] } });
+		expect(rejected.status).toBe(400);
+	});
+
+	it("404s for an outfit or occasion that's missing or someone else's, and can't use their things", async () => {
+		const alice = await signUp("alice");
+		const shirt = await addItem(alice, "White shirt");
+		const brunch = await addOutfit(alice, "Brunch", [shirt.id]);
+		const weekend = await addOccasion(alice, "Weekend", [brunch.id]);
+		const bobby = await signUp("bobby");
+		const hat = await addItem(bobby, "Hat", "Accessory");
+		const hatDay = await addOutfit(bobby, "Hat day", [hat.id]);
+
+		const outfitBody = { name: "Mine now", itemIds: [hat.id] };
+		const occasionBody = { name: "Mine now", outfitIds: [hatDay.id] };
+		expect((await call("PUT", `/api/outfits/${brunch.id}`, { cookie: bobby, body: outfitBody })).status).toBe(404);
+		expect((await call("PUT", `/api/occasions/${weekend.id}`, { cookie: bobby, body: occasionBody })).status).toBe(404);
+		expect((await call("PUT", "/api/outfits/nope", { cookie: bobby, body: outfitBody })).status).toBe(404);
+		// Alice can't put Bobby's hat or outfit into her own things either.
+		expect((await call("PUT", `/api/outfits/${brunch.id}`, { cookie: alice, body: outfitBody })).status).toBe(400);
+		expect((await call("PUT", `/api/occasions/${weekend.id}`, { cookie: alice, body: occasionBody })).status).toBe(400);
+		expect((await call("GET", "/api/outfits", { cookie: alice })).data.outfits).toEqual([brunch]);
+	});
+});
+
+describe("ordering", () => {
+	it.each(["items", "outfits", "occasions"])("saves the order of %s, and new ones go at the end", async (list) => {
+		const cookie = await signUp();
+		const shirt = await addItem(cookie, "White shirt");
+		const add = {
+			items: (name: string) => addItem(cookie, name),
+			outfits: (name: string) => addOutfit(cookie, name, [shirt.id]),
+			occasions: async (name: string) => addOccasion(cookie, name, [(await addOutfit(cookie, `${name} outfit`, [shirt.id])).id]),
+		}[list]!;
+		const names = async () =>
+			((await call("GET", `/api/${list}`, { cookie })).data[list as "items"] as { name: string }[])
+				.map((thing) => thing.name)
+				.filter((name) => name !== "White shirt");
+
+		const a = await add("A");
+		const b = await add("B");
+		const c = await add("C");
+		const { status } = await call("PUT", `/api/${list}/order`, { cookie, body: { ids: [c.id, a.id, b.id] } });
+		expect(status).toBe(200);
+		expect(await names()).toEqual(["C", "A", "B"]);
+		await add("D");
+		expect(await names()).toEqual(["C", "A", "B", "D"]);
+	});
+
+	it("skips ids that aren't the user's, and rejects a bad list", async () => {
+		const alice = await signUp("alice");
+		const shirt = await addItem(alice, "White shirt");
+		const jeans = await addItem(alice, "Blue jeans");
+		const bobby = await signUp("bobby");
+		const hat = await addItem(bobby, "Hat");
+		const scarf = await addItem(bobby, "Scarf");
+
+		// Bobby tries to reorder Alice's items: nothing of hers changes.
+		await call("PUT", "/api/items/order", { cookie: bobby, body: { ids: [jeans.id, shirt.id, scarf.id, hat.id] } });
+		const aliceItems = (await call("GET", "/api/items", { cookie: alice })).data.items!;
+		expect(aliceItems.map((item) => item.name)).toEqual(["White shirt", "Blue jeans"]);
+		const bobbyItems = (await call("GET", "/api/items", { cookie: bobby })).data.items!;
+		expect(bobbyItems.map((item) => item.name)).toEqual(["Scarf", "Hat"]);
+
+		expect((await call("PUT", "/api/items/order", { cookie: alice, body: { ids: "nope" } })).status).toBe(400);
+		const tooMany = Array.from({ length: 1001 }, (_, i) => `id${i}`);
+		expect((await call("PUT", "/api/items/order", { cookie: alice, body: { ids: tooMany } })).status).toBe(400);
+		expect((await call("PUT", "/api/items/order", { body: { ids: [shirt.id] } })).status).toBe(401);
+	});
+});
+
+// --- Deleting an account ---
+
+describe("deleting an account", () => {
+	const deleteAccount = (cookie: string, password: string) =>
+		call("DELETE", "/api/users/me", { cookie, body: { password } });
+	const count = (table: string) =>
+		(sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
+
+	it("needs the right password, then deletes the user and everything of theirs, but no one else's", async () => {
+		const alice = await signUp("alice");
+		const shirt = await addItem(alice, "White shirt");
+		const jeans = await addItem(alice, "Blue jeans", "Bottom");
+		await call("PUT", `/api/items/${shirt.id}/compatible/${jeans.id}`, { cookie: alice });
+		await addOccasion(alice, "Weekend", [(await addOutfit(alice, "Brunch", [shirt.id, jeans.id])).id]);
+		const bobby = await signUp("bobby");
+		const hat = await addItem(bobby, "Hat", "Accessory");
+
+		const wrong = await deleteAccount(alice, "wrongpass");
+		expect(wrong.status).toBe(403);
+		expect(wrong.data.error).toBe("Incorrect password");
+		expect((await deleteAccount(alice, "")).status).toBe(400);
+
+		const { status, setCookie } = await deleteAccount(alice, "password123");
+		expect(status).toBe(200);
+		expect(setCookie).toMatch(/Max-Age=0/);
+		for (const table of ["items", "item_compatibility", "outfits", "outfit_items", "occasions", "occasion_outfits"]) {
+			expect(count(table)).toBe(table === "items" ? 1 : 0);
+		}
+		expect(count("users")).toBe(1);
+		expect(count("sessions")).toBe(1);
+		expect((await call("GET", "/api/items", { cookie: bobby })).data.items).toEqual([hat]);
+
+		// The old cookie is dead, the password no longer works, and the username is free again.
+		expect((await call("GET", "/api/users/me", { cookie: alice })).data.user).toBeNull();
+		expect((await call("POST", "/api/users/login", { body: { username: "alice", password: "password123" } })).status).toBe(401);
+		expect((await call("POST", "/api/users/signup", { body: { username: "alice", password: "password123" } })).status).toBe(201);
+	});
+
+	it("needs you to be logged in", async () => {
+		expect((await call("DELETE", "/api/users/me", { body: { password: "password123" } })).status).toBe(401);
+	});
+
+	it("wrong passwords count toward the log in limit", async () => {
+		const alice = await signUp("alice");
+		for (let i = 0; i < 5; i++) {
+			expect((await deleteAccount(alice, "wrongpass")).status).toBe(403);
+		}
+		const locked = await deleteAccount(alice, "password123");
+		expect(locked.status).toBe(429);
+		expect(count("users")).toBe(1);
+	});
+});
+
+// --- Requests from other websites ---
+
+describe("CSRF", () => {
+	it("blocks a form-style or body-less request that another site sent", async () => {
+		const cookie = await signUp("alice");
+		const shirt = await addItem(cookie, "White shirt");
+		const fromForm = await call("POST", "/api/items", {
+			cookie,
+			site: "cross-site",
+			contentType: "text/plain",
+			body: { name: "Planted", type: "Top" },
+		});
+		expect(fromForm.status).toBe(403);
+		expect(fromForm.data.error).toBe("Request blocked");
+		expect((await call("DELETE", `/api/items/${shirt.id}`, { cookie, site: "cross-site" })).status).toBe(403);
+		expect((await call("POST", "/api/users/logout", { cookie, site: "cross-site" })).status).toBe(403);
+		expect((await call("GET", "/api/items", { cookie })).data.items).toEqual([shirt]);
+	});
+
+	it("allows the same request from the app itself, by Sec-Fetch-Site or by Origin", async () => {
+		const cookie = await signUp("alice");
+		const shirt = await addItem(cookie, "White shirt");
+		const jeans = await addItem(cookie, "Blue jeans");
+		expect((await call("DELETE", `/api/items/${shirt.id}`, { cookie })).status).toBe(200);
+		const byOrigin = await app.request(
+			`http://localhost/api/items/${jeans.id}`,
+			{ method: "DELETE", headers: { Cookie: cookie, Origin: "http://localhost" } },
+			env,
+		);
+		expect(byOrigin.status).toBe(200);
+	});
+});
+
 describe("HTTPS", () => {
 	const send = (url: string, init: RequestInit = {}) => app.request(url, { redirect: "manual", ...init }, env);
 
@@ -629,7 +848,7 @@ describe("HTTPS", () => {
 	});
 
 	it("tells browsers to stay on HTTPS (HSTS), including on errors", async () => {
-		for (const path of ["/api/users/me", "/api/nope"]) {
+		for (const path of ["/api/items", "/api/nope"]) {
 			const response = await send(`https://fashionapp.example.workers.dev${path}`);
 			expect(response.status).not.toBe(308);
 			expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
@@ -639,7 +858,7 @@ describe("HTTPS", () => {
 	it.each(["http://localhost:5173", "http://127.0.0.1:5173", "http://[::1]:5173"])(
 		"doesn't redirect local development at %s",
 		async (origin) => {
-			expect((await send(`${origin}/api/users/me`)).status).toBe(401);
+			expect((await send(`${origin}/api/items`)).status).toBe(401);
 		},
 	);
 

@@ -37,15 +37,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 // The logged-in user, or null if nobody is logged in.
 export async function getCurrentUser(): Promise<User | null> {
-	try {
-		const { user } = await request<{ user: User }>("GET", "/users/me");
-		return user;
-	} catch (err) {
-		if (err instanceof ApiError && err.status === 401) {
-			return null;
-		}
-		throw err;
-	}
+	const { user } = await request<{ user: User | null }>("GET", "/users/me");
+	return user;
 }
 
 export async function signUp(username: string, password: string): Promise<User> {
@@ -60,6 +53,11 @@ export async function logIn(username: string, password: string): Promise<User> {
 
 export async function logOut(): Promise<void> {
 	await request("POST", "/users/logout");
+}
+
+// Deletes the account and everything saved in it. Needs the password again.
+export async function deleteAccount(password: string): Promise<void> {
+	await request("DELETE", "/users/me", { password });
 }
 
 // --- Wardrobe ---
@@ -94,6 +92,12 @@ export async function createOutfit(name: string, itemIds: string[]): Promise<Out
 	return outfit;
 }
 
+// Renames an outfit and replaces its items.
+export async function updateOutfit(id: string, name: string, itemIds: string[]): Promise<Outfit> {
+	const { outfit } = await request<{ outfit: Outfit }>("PUT", `/outfits/${encodeURIComponent(id)}`, { name, itemIds });
+	return outfit;
+}
+
 export async function deleteOutfit(id: string): Promise<void> {
 	await request("DELETE", `/outfits/${encodeURIComponent(id)}`);
 }
@@ -103,6 +107,20 @@ export async function createOccasion(name: string, outfitIds: string[]): Promise
 	return occasion;
 }
 
+// Renames an occasion and replaces its outfits.
+export async function updateOccasion(id: string, name: string, outfitIds: string[]): Promise<Occasion> {
+	const { occasion } = await request<{ occasion: Occasion }>("PUT", `/occasions/${encodeURIComponent(id)}`, {
+		name,
+		outfitIds,
+	});
+	return occasion;
+}
+
 export async function deleteOccasion(id: string): Promise<void> {
 	await request("DELETE", `/occasions/${encodeURIComponent(id)}`);
+}
+
+// Saves the order the user put one of their lists in, e.g. saveOrder("items", ["b", "a", "c"]).
+export async function saveOrder(list: "items" | "outfits" | "occasions", ids: string[]): Promise<void> {
+	await request("PUT", `/${list}/order`, { ids });
 }

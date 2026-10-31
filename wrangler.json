@@ -27,9 +27,11 @@
 	],
 	"assets": {
 		"directory": "./dist/client",
-		"not_found_handling": "single-page-application",
-		// API requests always reach the Worker instead of getting the app's index.html.
-		"run_worker_first": ["/api/*"]
+		// A browser opening any page address (e.g. /items/abc) gets the app's index.html, without running the Worker.
+		// Other requests that match no file, like the app's fetch("/api/...") calls or a missing /assets/ file,
+		// go to the Worker, which answers /api and gives everything else a real 404.
+		// https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/
+		"not_found_handling": "single-page-application"
 	}
 	/**
 	 * Smart Placement

@@ -9,6 +9,9 @@ export const itemTypes = [
 
 export type ItemType = (typeof itemTypes)[number];
 
+// The longest name an item, outfit or occasion can have. Checked by the forms and the server.
+export const NAME_MAX_LENGTH = 100;
+
 // The password is never sent back from the server.
 export type User = {
 	username: string;

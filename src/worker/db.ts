@@ -32,6 +32,27 @@ export function groupIds(rows: LinkRow[]): Map<string, string[]> {
 	return groups;
 }
 
+// The most ids one "save the order" request can have.
+export const MAX_ORDER_IDS = 1000;
+
+// Saves the order the user put a list in: the first id gets position 0, the next 1, and so on.
+// The ids go in as one JSON list (json_each reads it), so any number of them fits in one query.
+// Ids that aren't the user's are skipped. New rows go at the end (see the INSERTs in routes/).
+export async function saveOrder(
+	db: D1Database,
+	table: "items" | "outfits" | "occasions",
+	userId: string,
+	ids: string[],
+) {
+	await db
+		.prepare(
+			`UPDATE ${table} SET position = (SELECT key FROM json_each(?2) WHERE value = ${table}.id)
+			WHERE user_id = ?1 AND id IN (SELECT value FROM json_each(?2))`,
+		)
+		.bind(userId, JSON.stringify(ids))
+		.run();
+}
+
 // Deletes the user's outfits that have no items left, then occasions that have no outfits left.
 // Put these after a delete in the same db.batch(), so it all happens as one transaction.
 export function deleteEmptyGroups(db: D1Database, userId: string): D1PreparedStatement[] {

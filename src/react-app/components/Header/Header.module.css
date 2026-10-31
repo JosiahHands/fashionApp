@@ -48,7 +48,8 @@
 }
 
 .link {
-	display: block;
+	display: flex;
+	align-items: center;
 	padding: 6px 12px;
 	border-radius: 999px;
 	font-size: 0.9rem;
@@ -56,20 +57,18 @@
 	color: var(--color-text-muted);
 }
 
-.link:hover {
-	background-color: var(--color-bg);
-	color: var(--color-text);
-}
-
 .account {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 8px;
 	min-width: 0;
 }
 
+/* Links to the account page. Long usernames end in "…". */
 .username {
 	overflow: hidden;
+	padding: 6px 8px;
+	border-radius: 999px;
 	font-size: 0.9rem;
 	font-weight: 600;
 	text-overflow: ellipsis;
@@ -87,19 +86,32 @@
 	cursor: pointer;
 }
 
-.logOut:hover {
-	border-color: var(--color-text-muted);
+/* Only on devices with a mouse: on touch screens a tapped link would stay highlighted. */
+@media (hover: hover) {
+	.link:hover {
+		background-color: var(--color-bg);
+		color: var(--color-text);
+	}
+
+	.username:hover {
+		text-decoration: underline;
+	}
+
+	.logOut:hover {
+		border-color: var(--color-text-muted);
+	}
 }
 
 .link:focus-visible,
 .brand:focus-visible,
+.username:focus-visible,
 .logOut:focus-visible {
 	outline: 2px solid var(--color-accent);
 	outline-offset: 2px;
 }
 
-/* On phones the section links move to their own row under the logo and account. */
-@media (width <= 560px) {
+/* On narrow screens the section links move to their own row under the logo and account. */
+@media (width <= 720px) {
 	.inner {
 		flex-wrap: wrap;
 		gap: 8px 16px;
@@ -112,7 +124,31 @@
 		width: 100%;
 	}
 
+	.links {
+		justify-content: space-between;
+	}
+}
+
+@media (width <= 560px) {
 	.title {
 		display: none;
+	}
+
+	.link {
+		padding: 6px 8px;
+	}
+}
+
+/* Big enough to tap on a phone. */
+@media (width <= 560px), (pointer: coarse) {
+	.brand,
+	.link,
+	.username,
+	.logOut {
+		min-height: 44px;
+	}
+
+	.username {
+		line-height: 32px;
 	}
 }

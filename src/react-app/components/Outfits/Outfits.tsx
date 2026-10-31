@@ -1,24 +1,34 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import type { Item, Outfit } from "../../../shared/types";
+import { NAME_MAX_LENGTH, type Item, type Outfit } from "../../../shared/types";
 import { EmptyState } from "../EmptyState/EmptyState";
 
 type OutfitsProps = {
 	items: Item[];
 	outfits: Outfit[];
-	// Resolves to true once saved, or false if it failed (App shows the error).
+	// Resolve to true once saved, or false if it failed (App shows the error).
 	onAdd: (name: string, itemIds: string[]) => Promise<boolean>;
+	onUpdate: (id: string, name: string, itemIds: string[]) => Promise<boolean>;
 	onRemove: (id: string) => void;
+	// Moves an outfit one place earlier (-1) or later (+1) in the list.
+	onMove: (id: string, step: number) => void;
 };
 
-// Build outfits from saved items and see them listed.
-export function Outfits({ items, outfits, onAdd, onRemove }: OutfitsProps) {
+// Build outfits from saved items, see them listed, and edit them.
+export function Outfits({ items, outfits, onAdd, onUpdate, onRemove, onMove }: OutfitsProps) {
 	const [name, setName] = useState("");
 	const [pickedIds, setPickedIds] = useState<string[]>([]);
+	// The outfit loaded into the form for editing, or null when the form adds a new one.
+	const [editingId, setEditingId] = useState<string | null>(null);
+	// True while saving, so a double click can't save twice.
+	const [saving, setSaving] = useState(false);
+	const formRef = useRef<HTMLFormElement>(null);
 
+	// If the outfit being edited gets deleted, the form goes back to adding a new one.
+	const editing = outfits.find((outfit) => outfit.id === editingId);
 	// Skips any picked item that was removed before the outfit was saved.
 	const picked = pickedIds.filter((id) => items.some((item) => item.id === id));
-	const canSave = name.trim() !== "" && picked.length > 0;
+	const canSave = name.trim() !== "" && picked.length > 0 && !saving;
 
 	// True when the item is marked as going with every item picked so far.
 	function goesWithPicks(item: Item) {
@@ -37,21 +47,40 @@ export function Outfits({ items, outfits, onAdd, onRemove }: OutfitsProps) {
 		return items.find((item) => item.id === id)?.name;
 	}
 
+	// Loads the outfit into the form and scrolls up to it.
+	function startEditing(outfit: Outfit) {
+		setEditingId(outfit.id);
+		setName(outfit.name);
+		setPickedIds(outfit.itemIds);
+		formRef.current?.scrollIntoView();
+	}
+
+	function clearForm() {
+		setEditingId(null);
+		setName("");
+		setPickedIds([]);
+	}
+
 	// Only clears the form once it's saved, so nothing is lost if saving fails.
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (!canSave) {
 			return;
 		}
-		if (await onAdd(name.trim(), picked)) {
-			setName("");
-			setPickedIds([]);
+		setSaving(true);
+		const saved = editing
+			? await onUpdate(editing.id, name.trim(), picked)
+			: await onAdd(name.trim(), picked);
+		setSaving(false);
+		if (saved) {
+			clearForm();
 		}
 	}
 
 	return (
 		<>
-			<form className="form" onSubmit={handleSubmit}>
+			<form ref={formRef} className="form" onSubmit={handleSubmit}>
+				{editing && <p className="form-title">Editing “{editing.name}”</p>}
 				<label className="field">
 					<span className="label">Outfit name</span>
 					<input
@@ -59,6 +88,7 @@ export function Outfits({ items, outfits, onAdd, onRemove }: OutfitsProps) {
 						value={name}
 						placeholder="e.g. Weekend brunch"
 						required
+						maxLength={NAME_MAX_LENGTH}
 						onChange={(event) => setName(event.target.value)}
 					/>
 				</label>
@@ -80,16 +110,23 @@ export function Outfits({ items, outfits, onAdd, onRemove }: OutfitsProps) {
 						<p className="hint">Items with a dashed outline go with everything you've picked.</p>
 					)}
 				</fieldset>
-				<button type="submit" disabled={!canSave}>
-					Save outfit
-				</button>
+				<div className="form-buttons">
+					<button type="submit" disabled={!canSave}>
+						{saving ? "Saving…" : editing ? "Save changes" : "Save outfit"}
+					</button>
+					{editing && (
+						<button type="button" className="button" onClick={clearForm}>
+							Cancel
+						</button>
+					)}
+				</div>
 			</form>
 
 			{outfits.length === 0 ? (
 				<EmptyState message="No outfits saved yet." />
 			) : (
 				<ul className="cards">
-					{outfits.map((outfit) => (
+					{outfits.map((outfit, index) => (
 						<li key={outfit.id} className="card">
 							<h3>
 								<Link className="card-link" to={`/outfits/${outfit.id}`}>
@@ -103,6 +140,38 @@ export function Outfits({ items, outfits, onAdd, onRemove }: OutfitsProps) {
 									</li>
 								))}
 							</ul>
+							<div className="card-actions">
+								<button
+									type="button"
+									className="button"
+									aria-label={`Edit ${outfit.name}`}
+									onClick={() => startEditing(outfit)}
+								>
+									Edit
+								</button>
+								{outfits.length > 1 && (
+									<>
+										<button
+											type="button"
+											className="button"
+											aria-label={`Move ${outfit.name} earlier`}
+											disabled={index === 0}
+											onClick={() => onMove(outfit.id, -1)}
+										>
+											←
+										</button>
+										<button
+											type="button"
+											className="button"
+											aria-label={`Move ${outfit.name} later`}
+											disabled={index === outfits.length - 1}
+											onClick={() => onMove(outfit.id, 1)}
+										>
+											→
+										</button>
+									</>
+								)}
+							</div>
 							<button
 								type="button"
 								className="remove"

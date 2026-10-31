@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { User } from "../../../shared/types";
 import * as api from "../../api";
 import styles from "./Login.module.css";
@@ -21,6 +21,16 @@ export function Login({ onLogIn }: LoginProps) {
 	// The server's reason it said no, like "That username is taken".
 	const [error, setError] = useState<string | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
+	// Ids that connect each label and hint to its input.
+	const id = useId();
+
+	// Closing forgets the password and any error, so they aren't still there when it's opened again.
+	function close() {
+		setOpen(false);
+		setPassword("");
+		setShowPassword(false);
+		setError(null);
+	}
 
 	// While open, clicking outside the panel or pressing Escape closes it.
 	useEffect(() => {
@@ -29,12 +39,12 @@ export function Login({ onLogIn }: LoginProps) {
 		}
 		function handleClick(event: MouseEvent) {
 			if (!containerRef.current?.contains(event.target as Node)) {
-				setOpen(false);
+				close();
 			}
 		}
 		function handleKey(event: KeyboardEvent) {
 			if (event.key === "Escape") {
-				setOpen(false);
+				close();
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
@@ -75,7 +85,7 @@ export function Login({ onLogIn }: LoginProps) {
 				type="button"
 				className={styles.trigger}
 				aria-expanded={open}
-				onClick={() => setOpen(!open)}
+				onClick={() => (open ? close() : setOpen(true))}
 			>
 				Log in
 			</button>
@@ -102,9 +112,14 @@ export function Login({ onLogIn }: LoginProps) {
 					</div>
 
 					<form className="form" onSubmit={handleSubmit}>
-						<label className="field">
-							<span className="label">Username</span>
+						{/* The labels only hold the field's name; the rules underneath are hints (aria-describedby). */}
+						<div className="field">
+							<label className="label" htmlFor={`${id}-username`}>
+								Username
+							</label>
 							<input
+								id={`${id}-username`}
+								aria-describedby={mode === "signup" ? `${id}-username-hint` : undefined}
 								type="text"
 								value={username}
 								autoComplete="username"
@@ -117,24 +132,36 @@ export function Login({ onLogIn }: LoginProps) {
 								maxLength={mode === "signup" ? 30 : undefined}
 								pattern={mode === "signup" ? "[A-Za-z0-9_]+" : undefined}
 								title={mode === "signup" ? "Letters, numbers and underscores only." : undefined}
-								onChange={(event) => setUsername(event.target.value)}
+								onChange={(event) => {
+									setUsername(event.target.value);
+									setError(null);
+								}}
 							/>
 							{mode === "signup" && (
-								<span className="hint">3–30 letters, numbers or underscores.</span>
+								<span id={`${id}-username-hint`} className="hint">
+									3–30 letters, numbers or underscores.
+								</span>
 							)}
-						</label>
+						</div>
 
-						<label className="field">
-							<span className="label">Password</span>
+						<div className="field">
+							<label className="label" htmlFor={`${id}-password`}>
+								Password
+							</label>
 							<span className={styles.passwordRow}>
 								<input
+									id={`${id}-password`}
+									aria-describedby={mode === "signup" ? `${id}-password-hint` : undefined}
 									type={showPassword ? "text" : "password"}
 									value={password}
 									autoComplete={mode === "login" ? "current-password" : "new-password"}
 									required
 									// Only new passwords need to meet the length rule.
 									minLength={mode === "signup" ? 8 : undefined}
-									onChange={(event) => setPassword(event.target.value)}
+									onChange={(event) => {
+										setPassword(event.target.value);
+										setError(null);
+									}}
 								/>
 								<button
 									type="button"
@@ -145,8 +172,12 @@ export function Login({ onLogIn }: LoginProps) {
 									{showPassword ? "Hide" : "Show"}
 								</button>
 							</span>
-							{mode === "signup" && <span className="hint">At least 8 characters.</span>}
-						</label>
+							{mode === "signup" && (
+								<span id={`${id}-password-hint`} className="hint">
+									At least 8 characters.
+								</span>
+							)}
+						</div>
 
 						{error && (
 							<p className="form-error" role="alert">

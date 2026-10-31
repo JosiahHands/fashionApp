@@ -83,3 +83,12 @@
 .submit {
 	justify-self: stretch;
 }
+
+/* Big enough to tap on a phone. */
+@media (width <= 560px), (pointer: coarse) {
+	.trigger,
+	.toggle button,
+	.show {
+		min-height: 44px;
+	}
+}
